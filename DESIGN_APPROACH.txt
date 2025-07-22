@@ -1,7 +1,7 @@
 TEMPORAL WORKFLOW ORCHESTRATION SYSTEM - DESIGN APPROACH
 =========================================================
 
-SIMPLE 3-LAYER ARCHITECTURE (96 words):
+SIMPLE 3-LAYER ARCHITECTURE:
 
 1. WEB LAYER (main.py) 
    - Flask UI handles user input

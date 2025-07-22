@@ -382,71 +382,68 @@ class OrderSummaryService(BaseService):
         
         # Generate intelligent summary based on workflow type
         if domain == 'travel':
-            summary_text = f"""
-                # 🧳 Travel Booking Summary
+            summary_text = f"""# 🧳 Travel Booking Summary
 
-                ## ✅ **Service Details**
-                - **Service Type**: {workflow_type.replace('_', ' ').title()}
-                - **Total Cost**: **{currency_display}**
-                - **Processing Status**: {successful_services}/{total_services} services completed successfully
+## ✅ **Service Details**
+- **Service Type**: {workflow_type.replace('_', ' ').title()}
+- **Total Cost**: **{currency_display}**
+- **Processing Status**: {successful_services}/{total_services} services completed successfully
 
-                ## 📋 **Items Booked**
-            """
+## 📋 **Items Booked**
+"""
             for item in items:
                 summary_text += f"- **{item.get('quantity', 1)}x {item.get('name', 'Service')}** - *{currency} {item.get('price', 0):.2f}*\n"
             
             summary_text += f"""
-                ## � **Customer Information**
-                - **Customer ID**: `{config.get('customer_id', 'N/A')}`
-                - **Contact Email**: {config.get('customer_email', 'N/A')}
-                - **Service Level**: {config.get('service_level', 'Standard')}
-                - **Processing Time**: ⚡ Completed in real-time
-            """
+## 👤 **Customer Information**
+- **Customer ID**: `{config.get('customer_id', 'N/A')}`
+- **Contact Email**: {config.get('customer_email', 'N/A')}
+- **Service Level**: {config.get('service_level', 'Standard')}
+- **Processing Time**: ⚡ Completed in real-time
+"""
 
         elif domain == 'ecommerce':
-            summary_text = f"""
-                # 🛒 Order Summary
+            summary_text = f"""# 🛒 Order Summary
 
-                ## ✅ **Order Details**
-                - **Order Type**: {workflow_type.replace('_', ' ').title()}
-                - **Total Amount**: **{currency_display}**
-                - **Processing Status**: {successful_services}/{total_services} processes completed
+## ✅ **Order Details**
+- **Order Type**: {workflow_type.replace('_', ' ').title()}
+- **Total Amount**: **{currency_display}**
+- **Processing Status**: {successful_services}/{total_services} processes completed
 
-                ## 📦 **Items Ordered**
-                """
+## 📦 **Items Ordered**
+"""
             for item in items:
                 summary_text += f"- **{item.get('quantity', 1)}x {item.get('name', 'Product')}** - *{currency} {item.get('price', 0):.2f}*\n"
             
             summary_text += f"""
-                ## 🚚 **Delivery & Payment**
-                - **Delivery Timeline**: {config.get('delivery_timeline', 'Standard shipping')}
-                - **Payment Method**: {config.get('payment_method', 'Credit Card')}
-                - **Customer ID**: `{config.get('customer_id', 'N/A')}`
-                - **Email**: {config.get('customer_email', 'N/A')}
-            """
+## 🚚 **Delivery & Payment**
+- **Delivery Timeline**: {config.get('delivery_timeline', 'Standard shipping')}
+- **Payment Method**: {config.get('payment_method', 'Credit Card')}
+- **Customer ID**: `{config.get('customer_id', 'N/A')}`
+- **Email**: {config.get('customer_email', 'N/A')}
+"""
 
         else:
             # Generic summary for other domains
-            summary_text = f"""
-                # 📋 Service Summary
+            summary_text = f"""# 📋 Service Summary
 
-                ## ✅ **Service Details**
-                - **Service Type**: {workflow_type.replace('_', ' ').title()}
-                - **Domain**: {domain.title()}
-                - **Total Cost**: **{currency_display}**
-                - **Processing Status**: {successful_services}/{total_services} services completed
+## ✅ **Service Details**
+- **Service Type**: {workflow_type.replace('_', ' ').title()}
+- **Domain**: {domain.title()}
+- **Total Cost**: **{currency_display}**
+- **Processing Status**: {successful_services}/{total_services} services completed
 
-                ## 📋 **Services Requested**
-            """
+## 📋 **Services Requested**
+"""
             for item in items:
                 summary_text += f"- **{item.get('quantity', 1)}x {item.get('name', 'Service')}** - *{currency} {item.get('price', 0):.2f}*\n"
             
             summary_text += f"""
-                ## � **Customer Information**
-                - **Customer ID**: `{config.get('customer_id', 'N/A')}`
-                - **Contact**: {config.get('customer_email', 'N/A')}
-                - **Service Level**: {config.get('service_level', 'Standard')}
-            """
+## 👤 **Customer Information**
+- **Customer ID**: `{config.get('customer_id', 'N/A')}`
+- **Contact**: {config.get('customer_email', 'N/A')}
+- **Service Level**: {config.get('service_level', 'Standard')}
+"""
 
         # Add service status details
         if successful_services < total_services:
@@ -456,23 +453,23 @@ class OrderSummaryService(BaseService):
                     failed_services.append(service_name.replace('_', ' ').title())
             
             summary_text += f"""
-                ## ⚠️ **Important Notice**
-                **{len(failed_services)} service(s) encountered issues:**
-            """
+## ⚠️ **Important Notice**
+**{len(failed_services)} service(s) encountered issues:**
+"""
             for service in failed_services:
                 summary_text += f"- ❌ {service}\n"
             
             summary_text += f"""
-                🔄 **Retry options are available** for failed services using the retry buttons below.
-            """
+🔄 **Retry options are available** for failed services using the retry buttons below.
+"""
 
         # Add completion status
         if successful_services == total_services:
             summary_text += f"""
-                ## 🎉 **Completion Status**
-                > ✅ **All services completed successfully!**  
-                > Your {workflow_type.replace('_', ' ')} is fully processed and ready.
-            """
+## 🎉 **Completion Status**
+> ✅ **All services completed successfully!**  
+> Your {workflow_type.replace('_', ' ')} is fully processed and ready.
+"""
 
         summary_data = {
             'summary_id': str(uuid.uuid4()),

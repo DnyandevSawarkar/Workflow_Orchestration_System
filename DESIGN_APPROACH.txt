@@ -1,0 +1,78 @@
+TEMPORAL WORKFLOW ORCHESTRATION SYSTEM - DESIGN APPROACH
+=========================================================
+
+SIMPLE 3-LAYER ARCHITECTURE (96 words):
+
+1. WEB LAYER (main.py) 
+   - Flask UI handles user input
+   - Converts natural language to workflow steps using Groq LLM
+
+2. SERVICE LAYER (services/) 
+   - 7 independent services inherit from BaseService
+   - Each with configurable failure rates and retry logic
+
+3. ORCHESTRATION 
+   - Sequential execution: Analysis → Order → Payment → Currency → Notifications → Shipping → Summary
+   - Failed services trigger retries or escalation (call center)
+
+KEY PRINCIPLE: Fail-fast with graceful recovery
+- Services fail randomly but system continues
+- Provides real-time feedback and intelligent markdown summaries
+
+VISUAL FLOW:
+Natural Language → LLM Parse → Service Chain → Real-time UI → Markdown Summary
+
+ARCHITECTURE COMPONENTS:
+========================
+
+Services:
+- Order Creation (Dummy, 10% failure)
+- Payment Processing (Dummy, 0% failure) 
+- Currency Conversion (Real API, 10% failure)
+- Email Notification (Dummy, 15% failure)
+- Shipping Confirmation (Dummy, 10% failure)
+- Call Center Trigger (Dummy, 5% failure)
+- SMS Notification (Dummy, 12% failure)
+
+Technology Stack:
+- Backend: Python 3.8+, Flask, CORS
+- Frontend: HTML5, CSS3, JavaScript, Marked.js
+- LLM: Groq API for natural language processing
+- External API: Currency conversion service
+- Architecture: Object-oriented with service registry pattern
+
+Key Features:
+- Natural Language Processing
+- Real-time UI with progress tracking
+- Failure simulation with retry functionality
+- Object-oriented design principles
+- Real API integration with fallback rates
+- Comprehensive logging and status tracking
+
+Production Ready:
+- Professional web interface
+- Robust error handling
+- Scalable service architecture
+- Comprehensive observability
+- Modern responsive design
+
+QUICK START:
+============
+1. cd temporal-workflow-system/task
+2. pip install -r requirements.txt
+3. python start.py
+4. Open http://localhost:5000
+
+USAGE EXAMPLES:
+===============
+- "Order 2 laptops for our office team"
+- "Book a flight from NYC to Paris for business"
+- "Purchase enterprise software licenses"
+- "Schedule a professional consultation"
+
+ERROR HANDLING:
+===============
+- Graceful failures with configurable failure rates
+- Retry mechanism through UI
+- Fallback systems for external APIs
+- Comprehensive logging with detailed status

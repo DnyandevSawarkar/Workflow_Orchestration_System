@@ -1,0 +1,51 @@
+graph TD
+    A[Start Workflow] --> B{Channel Type?}
+    B -->|B2C| C[Collect Payment]
+    B -->|Corporate| D[Check Wallet Balance]
+    
+    C --> E{Payment Success?}
+    E -->|Yes| F[Create Order]
+    E -->|No| G[End - Payment Failed]
+    
+    D --> H{Sufficient Balance?}
+    H -->|Yes| I[Deduct from Wallet]
+    H -->|No| J[End - Insufficient Funds]
+    
+    F --> K[Currency Conversion]
+    I --> F
+    
+    K --> L{Conversion Success?}
+    L -->|Yes| M[Make Booking]
+    L -->|No| N[Retry Currency Conversion]
+    
+    N --> O{Retry Success?}
+    O -->|Yes| M
+    O -->|No| P[Refund Payment/Restore Wallet]
+    
+    M --> Q{Booking Success?}
+    Q -->|Yes| R[Send Confirmation]
+    Q -->|No| S{Channel Type?}
+    
+    S -->|B2C| T[Refund Payment]
+    S -->|Corporate| U[Find Next Best Price]
+    
+    U --> V{Alternative Found?}
+    V -->|Yes| W[Make Alternative Booking]
+    V -->|No| X[Restore Wallet & Notify]
+    
+    W --> Y{Alt Booking Success?}
+    Y -->|Yes| R
+    Y -->|No| X
+    
+    R --> Z[Send Shipping Confirmation]
+    T --> AA[End - Refunded]
+    X --> BB[End - Failed]
+    Z --> CC[End - Success]
+    
+    style A fill:#90EE90
+    style G fill:#FFB6C1
+    style J fill:#FFB6C1
+    style AA fill:#FFB6C1
+    style BB fill:#FFB6C1
+    style CC fill:#90EE90
+

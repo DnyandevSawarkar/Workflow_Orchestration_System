@@ -91,8 +91,12 @@ class GroqLLMService(BaseService):
                         }
                     ],
                     "currency": "string (detect from context: USD, EUR, GBP, JPY, CAD, AUD, etc. Default USD)",
-                    "target_currency": "string (same as currency unless conversion specified)",
+                    "target_currency": "string (IMPORTANT: Set this for cross-border transactions based on payment method country. Examples: 'convert EUR to GBP' → currency='EUR', target_currency='GBP'. If no conversion mentioned, same as currency)",
                     "payment_method": "string (infer from context: 'credit_card', 'wallet', 'bank_transfer', 'subscription')",
+                    "payment_country": "string (country associated with payment method: US, UK, EU, JP, CA, AU, etc.)",
+                    "cross_border_transaction": "boolean (true if currency differs from payment_country currency)",
+                    "original_amount": "number (total amount in original currency)",
+                    "converted_amount": "number (total amount in payment method country currency)",
                     "booking_type": "string (e.g., 'standard', 'premium', 'enterprise', 'basic')",
                     "service_level": "string (e.g., 'standard', 'priority', 'express')",
                     "shipping_method": "string (if applicable: 'standard', 'express', 'digital', 'pickup')",
@@ -115,7 +119,14 @@ class GroqLLMService(BaseService):
 
                 Important guidelines:
                 - If the input is unclear or too vague, make reasonable assumptions
-                - Detect currency from context: locations (NYC=USD, Paris=EUR, London=GBP, Tokyo=JPY), explicit mentions, or business context
+                - **CURRENCY CONVERSION**: When user explicitly requests currency conversion (e.g., "convert 500 EUR to GBP", "I need USD equivalent of 100 CAD"), set currency to source currency and target_currency to destination currency
+                - **CROSS-BORDER TRANSACTIONS**: For ALL transactions, automatically detect if currency conversion is needed:
+                  * Detect transaction currency from location/context
+                  * Detect payment method country from customer info, payment details, or company location
+                  * If transaction currency ≠ payment country currency, set cross_border_transaction=true
+                  * Always convert to payment method country currency for cross-border transactions
+                - **CURRENCY DETECTION**: Detect currency from context: locations (NYC=USD, Paris=EUR, London=GBP, Tokyo=JPY), explicit mentions, or business context
+                - **PAYMENT COUNTRY MAPPING**: US→USD, UK→GBP, EU/Germany/France/Italy→EUR, Japan→JPY, Canada→CAD, Australia→AUD
                 - For corporate requests, prefer wallet payment method
                 - For individual requests, prefer credit_card payment method
                 - Estimate reasonable prices based on the service/product type
@@ -123,13 +134,13 @@ class GroqLLMService(BaseService):
                 - If it's a subscription or recurring service, note that in the workflow_type
                 - For digital services, use 'digital' shipping method
                 - For appointments/consultations, use 'N/A' for shipping
-                - Currency detection examples:
-                * "flight to Paris" → EUR
-                * "hotel in London" → GBP  
-                * "purchase in Tokyo" → JPY
-                * "order to Canada" → CAD
-                * "business in Australia" → AUD
-                * Default to USD if unclear
+                - **Cross-border transaction examples**:
+                * "hotel in Paris, paying with US card" → currency='EUR', target_currency='USD', payment_country='US', cross_border_transaction=true
+                * "flight from London, UK customer" → currency='GBP', target_currency='GBP', payment_country='UK', cross_border_transaction=false
+                * "Tokyo restaurant, Canadian credit card" → currency='JPY', target_currency='CAD', payment_country='CA', cross_border_transaction=true
+                * "German customer buying from US company" → currency='USD', target_currency='EUR', payment_country='DE', cross_border_transaction=true
+                * "Australian business, local payment" → currency='AUD', target_currency='AUD', payment_country='AU', cross_border_transaction=false
+                - **Amount calculation**: original_amount = total in transaction currency, converted_amount = total in payment country currency
 
                 Return ONLY valid JSON, no additional text.
             """
@@ -215,6 +226,10 @@ class GroqLLMService(BaseService):
                 'currency': 'USD',
                 'target_currency': 'USD',
                 'payment_method': 'credit_card',
+                'payment_country': 'US',
+                'cross_border_transaction': False,
+                'original_amount': 100.0,
+                'converted_amount': 100.0,
                 'booking_type': 'standard',
                 'service_level': 'standard',
                 'shipping_method': 'standard',
@@ -263,6 +278,38 @@ class GroqLLMService(BaseService):
                 workflow_config['customer_address'] = '123 Corporate Drive, Business City, State'
                 workflow_config['payment_method'] = 'wallet'
                 workflow_config['customer_id'] = f'CORP-{uuid.uuid4().hex[:8].upper()}'
+            
+            # Calculate total amount from items
+            total_amount = sum(item.get('price', 0) * item.get('quantity', 1) for item in workflow_config['items'])
+            workflow_config['original_amount'] = total_amount
+            
+            # Handle cross-border transaction detection and amount conversion
+            transaction_currency = workflow_config.get('currency', 'USD')
+            payment_country = workflow_config.get('payment_country', 'US')
+            target_currency = workflow_config.get('target_currency', transaction_currency)
+            
+            # Map payment country to currency
+            country_currency_map = {
+                'US': 'USD', 'USA': 'USD',
+                'UK': 'GBP', 'GB': 'GBP', 'Britain': 'GBP',
+                'EU': 'EUR', 'DE': 'EUR', 'FR': 'EUR', 'IT': 'EUR', 'ES': 'EUR', 'Germany': 'EUR', 'France': 'EUR',
+                'JP': 'JPY', 'Japan': 'JPY',
+                'CA': 'CAD', 'Canada': 'CAD',
+                'AU': 'AUD', 'Australia': 'AUD'
+            }
+            
+            payment_currency = country_currency_map.get(payment_country, 'USD')
+            
+            # Determine if this is a cross-border transaction
+            is_cross_border = transaction_currency != payment_currency
+            workflow_config['cross_border_transaction'] = is_cross_border
+            
+            # Set target currency for cross-border transactions
+            if is_cross_border and target_currency == transaction_currency:
+                workflow_config['target_currency'] = payment_currency
+            
+            # For now, set converted_amount same as original (will be calculated by currency service)
+            workflow_config['converted_amount'] = total_amount
             
             self._log_operation("PARSE_WORKFLOW", True, "Workflow configuration generated successfully")
             

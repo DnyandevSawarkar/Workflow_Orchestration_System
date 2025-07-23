@@ -138,7 +138,7 @@ class CurrencyConversionService(BaseService):
     
     def __init__(self):
         super().__init__("CurrencyConversionService", failure_rate=0.1)
-        self.api_url = os.getenv("CURRENCY_API_URL", "https://v1.apiplugin.io/v1/currency/SJOX87Ur")
+        self.api_base_url = "https://v1.apiplugin.io/v1/currency"
         self.api_key = os.getenv("CURRENCY_API_KEY", "SJOX87Ur")
         
         # Fallback rates for when API is unavailable
@@ -169,9 +169,8 @@ class CurrencyConversionService(BaseService):
         # Try real API first
         try:
             if not self._simulate_failure():
-                # Simulate API call (replace with actual API call)
-                # For demo purposes, using fallback rates
-                rate = self._get_exchange_rate(from_currency, to_currency)
+                # Make actual API call to currency plugin
+                rate = self._get_exchange_rate_from_api(from_currency, to_currency)
                 converted_amount = round(amount * rate, 2)
                 
                 conversion_data = {
@@ -183,7 +182,7 @@ class CurrencyConversionService(BaseService):
                     'source': 'live_api'
                 }
                 
-                self._log_operation("CONVERT_CURRENCY", True, f"Converted ${amount} {from_currency} to ${converted_amount} {to_currency}")
+                self._log_operation("CONVERT_CURRENCY", True, f"API call successful: Converted ${amount} {from_currency} to ${converted_amount} {to_currency}")
                 
                 return ServiceResult(
                     success=True,
@@ -222,9 +221,65 @@ class CurrencyConversionService(BaseService):
                     error_message=f"Currency conversion failed: {str(fallback_error)}"
                 )
     
+    def _get_exchange_rate_from_api(self, from_currency: str, to_currency: str) -> float:
+        """Get exchange rate from real API using correct format from API documentation"""
+        try:
+            # Correct API format from their website documentation
+            url = f"{self.api_base_url}/{self.api_key}/convert"
+            
+            headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'User-Agent': 'ProDT-Currency-Service/1.0'
+            }
+            
+            params = {
+                "amount": "1",
+                "from": from_currency,
+                "to": to_currency
+            }
+            
+            self._log_operation("API_CALL", True, f"Making API request to: {url} with params: {params}")
+            
+            # Make the actual HTTP request using the format from their documentation
+            response = requests.get(url, headers=headers, params=params, timeout=5)
+            response.raise_for_status()  # Raise exception for bad status codes
+            
+            data = response.json()
+            self._log_operation("API_RESPONSE", True, f"API Response: {data}")
+            
+            # Extract rate from the known API response format
+            # Response format should be similar to: {"query":{"from":"USD","to":"EUR","amount":"1"},"info":{"rate":...},"result":...}
+            if 'result' in data:
+                rate = float(data['result'])
+            elif 'info' in data and 'rate' in data['info']:
+                rate = float(data['info']['rate'])
+            elif 'rate' in data:
+                rate = float(data['rate'])
+            elif 'conversion_rate' in data:
+                rate = float(data['conversion_rate'])
+            elif 'exchange_rate' in data:
+                rate = float(data['exchange_rate'])
+            else:
+                # If response format is unexpected, log it and fall back
+                self._log_operation("API_PARSE_ERROR", False, f"Unexpected API response format: {data}")
+                raise Exception(f"Unexpected API response format: {list(data.keys()) if isinstance(data, dict) else type(data)}")
+            
+            self._log_operation("API_SUCCESS", True, f"Retrieved live rate {rate} for {from_currency} to {to_currency}")
+            return rate
+            
+        except requests.exceptions.RequestException as e:
+            self._log_operation("API_ERROR", False, f"HTTP request failed: {str(e)}")
+            raise Exception(f"API request failed: {str(e)}")
+        except (KeyError, ValueError, TypeError) as e:
+            self._log_operation("API_PARSE_ERROR", False, f"Failed to parse API response: {str(e)}")
+            raise Exception(f"Failed to parse API response: {str(e)}")
+        except Exception as e:
+            self._log_operation("API_UNKNOWN_ERROR", False, f"Unknown API error: {str(e)}")
+            raise Exception(f"Unknown API error: {str(e)}")
+    
     def _get_exchange_rate(self, from_currency: str, to_currency: str) -> float:
-        """Get exchange rate (simulated for demo)"""
-        # In real implementation, this would call the actual API
+        """Get exchange rate from fallback rates (for backward compatibility)"""
         return self.fallback_rates.get(from_currency, {}).get(to_currency, 1.0)
 
 # =============================================================================
@@ -367,14 +422,36 @@ class OrderSummaryService(BaseService):
         
         # Calculate totals and gather information
         items = config.get('items', [])
-        total_amount = sum(item.get('price', 0) * item.get('quantity', 1) for item in items)
+        original_amount = config.get('original_amount', sum(item.get('price', 0) * item.get('quantity', 1) for item in items))
+        converted_amount = config.get('converted_amount', original_amount)
         currency = config.get('currency', 'USD')
+        target_currency = config.get('target_currency', currency)
+        is_cross_border = config.get('cross_border_transaction', False)
+        payment_country = config.get('payment_country', 'US')
         workflow_type = config.get('workflow_type', 'service_request')
         domain = config.get('domain', 'general')
         
         # Get payment details if available
         payment_data = results.get('payment', {}).get('data', {})
-        currency_display = payment_data.get('currency_display', f"{currency} {total_amount:.2f}")
+        
+        # Get currency conversion details from the currency conversion service
+        currency_data = results.get('currency_conversion', {}).get('data', {})
+        exchange_rate = currency_data.get('exchange_rate', 1.0)
+        conversion_source = currency_data.get('source', 'no_conversion')
+        
+        # Use the amounts from currency conversion service if available
+        if currency_data:
+            original_amount = currency_data.get('original_amount', original_amount)
+            converted_amount = currency_data.get('converted_amount', converted_amount)
+        
+        # Create currency display with cross-border info
+        if is_cross_border and currency != target_currency:
+            currency_display = f"""**{original_amount:.2f} {currency}** → **{converted_amount:.2f} {target_currency}**
+💱 *Exchange Rate: 1 {currency} = {exchange_rate:.4f} {target_currency}*  
+🌍 *Cross-border transaction (Payment Country: {payment_country})*  
+📡 *Conversion Source: {conversion_source}*"""
+        else:
+            currency_display = f"**{original_amount:.2f} {currency}**"
         
         # Count successful vs failed services
         successful_services = sum(1 for result in results.values() if result.get('success', False))
@@ -476,7 +553,7 @@ class OrderSummaryService(BaseService):
             'summary_text': summary_text,
             'workflow_type': workflow_type,
             'domain': domain,
-            'total_amount': total_amount,
+            'total_amount': original_amount,
             'currency': currency,
             'currency_display': currency_display,
             'services_completed': successful_services,

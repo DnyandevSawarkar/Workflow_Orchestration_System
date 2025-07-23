@@ -976,7 +976,7 @@ HTML_TEMPLATE = '''
             const serviceMapping = {
                 'order': 'service-order',
                 'payment': 'service-payment', 
-                'currency': 'service-currency',
+                'currency_conversion': 'service-currency',
                 'email': 'service-email',
                 'shipping': 'service-shipping',
                 'call': 'service-call',
@@ -1478,7 +1478,66 @@ def execute_workflow():
             }
         }
         
-        # Step 2: Order/Service Creation
+        # Step 2: Currency Conversion (automatic for cross-border transactions)
+        currency_conversion_result = None
+        original_currency = config.get('currency', 'USD')
+        target_currency = config.get('target_currency', original_currency)
+        is_cross_border = config.get('cross_border_transaction', False)
+        payment_country = config.get('payment_country', 'US')
+        
+        # Force currency conversion for cross-border transactions or explicit requests
+        if original_currency != target_currency or is_cross_border:
+            currency_service = registry.get_service('currency_conversion')
+            total_amount = sum(item['price'] * item['quantity'] for item in config['items'])
+            
+            currency_conversion_result = currency_service.execute(
+                amount=total_amount,
+                from_currency=original_currency,
+                to_currency=target_currency
+            )
+            results['currency_conversion'] = {
+                'success': currency_conversion_result.success, 
+                'data': currency_conversion_result.data,
+                'cross_border': is_cross_border,
+                'payment_country': payment_country
+            }
+            
+            # Update the total amount if conversion was successful
+            if currency_conversion_result.success:
+                converted_amount = currency_conversion_result.data['converted_amount']
+                # Update config to use converted amount for payment processing
+                config['converted_total'] = converted_amount
+                config['converted_amount'] = converted_amount
+                config['original_amount'] = total_amount
+                config['final_currency'] = target_currency
+                
+                # Log cross-border transaction info
+                if is_cross_border:
+                    print(f"💱 Cross-border transaction detected:")
+                    print(f"   Original: {total_amount} {original_currency}")
+                    print(f"   Converted: {converted_amount} {target_currency}")
+                    print(f"   Payment Country: {payment_country}")
+        else:
+            # No conversion needed, but log it for completeness
+            total_amount = sum(item['price'] * item['quantity'] for item in config['items'])
+            results['currency_conversion'] = {
+                'success': True, 
+                'data': {
+                    'original_amount': total_amount,
+                    'converted_amount': total_amount,
+                    'from_currency': original_currency,
+                    'to_currency': target_currency,
+                    'exchange_rate': 1.0,
+                    'source': 'no_conversion_needed'
+                },
+                'cross_border': False,
+                'payment_country': payment_country
+            }
+            config['converted_total'] = total_amount
+            config['converted_amount'] = total_amount
+            config['original_amount'] = total_amount
+        
+        # Step 3: Order/Service Creation
         order_service = registry.get_service('order_creation')
         order_result = order_service.execute(
             customer_id=config['customer_id'],
@@ -1488,22 +1547,25 @@ def execute_workflow():
         results['order'] = {'success': order_result.success, 'data': order_result.data}
         
         if order_result.success:
-            # Step 3: Payment processing (Can fail)
+            # Step 4: Payment processing (Can fail) - Use converted amount if available
             payment_service = registry.get_service('payment_processing')
+            payment_amount = config.get('converted_total', sum(item['price'] * item['quantity'] for item in config['items']))
+            payment_currency = config.get('final_currency', config.get('currency', 'USD'))
+            
             payment_result = payment_service.execute(
-                amount=sum(item['price'] * item['quantity'] for item in config['items']),
+                amount=payment_amount,
                 customer_id=config['customer_id'],
-                currency=config.get('currency', 'USD')
+                currency=payment_currency
             )
             results['payment'] = {'success': payment_result.success, 'data': payment_result.data}
             
-            # Step 4: Shipping/Delivery (Can fail)
+            # Step 5: Shipping/Delivery (Can fail)
             if payment_result.success:
                 shipping_service = registry.get_service('shipping_confirmation')
                 shipping_result = shipping_service.execute(order_id=order_result.data['order_id'])
                 results['shipping'] = {'success': shipping_result.success, 'data': shipping_result.data}
             
-            # Step 5: Notifications (Can fail)
+            # Step 6: Notifications (Can fail)
             email_service = registry.get_service('email_notification')
             email_result = email_service.execute(
                 recipient=config['customer_email'],
@@ -1515,7 +1577,7 @@ def execute_workflow():
             sms_service = registry.get_service('sms_notification')
             sms_result = sms_service.execute(
                 phone_number=config.get('customer_phone', '+1-555-0123'),
-                message=f"Order {order_result.data['order_id']} confirmed. Total: ${results['payment']['data'].get('amount', 0)}"
+                message=f"Order {order_result.data['order_id']} confirmed. Total: {payment_currency} {payment_amount}"
             )
             results['sms'] = {'success': sms_result.success, 'data': sms_result.data}
         
